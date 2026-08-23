@@ -11,8 +11,12 @@ input[type="text"], input[type="number"], input[type="file"].field-input { width
 input[type="file"].field-input { cursor: pointer; padding: 7px; }
 label { display: block; margin-bottom: 6px; font-size: 13px; color: #a0a0ab; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.input-with-btn { display: flex; gap: 6px; }
+.input-with-btn input { flex: 1; }
 button { background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; font-size: 15px; margin-top: 10px; }
 button:hover { background: #2563eb; }
+.btn-inline { width: auto; margin-top: 0; padding: 0 12px; font-size: 13px; white-space: nowrap; background: #24242a; border: 1px solid #33333d; color: #3b82f6; }
+.btn-inline:hover { background: #33333d; }
 .btn-danger { background: #dc2626; margin-top: 8px; font-size: 13px; padding: 8px; display: none; }
 .btn-danger:hover { background: #b91c1c; }
 #coverPreview { max-width: 120px; border-radius: 6px; margin-top: 8px; display: none; }
