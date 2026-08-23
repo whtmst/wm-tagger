@@ -61,6 +61,7 @@
     let originalFileName = "";
     let coverBuffer = null;
     let coverMime = "";
+    let existingCoverData = null;
 
     const dropZone = document.getElementById('dropZone');
     const audioFileInput = document.getElementById('audioFile');
@@ -87,48 +88,137 @@
       if (file) processAudioFile(file);
     });
 
+    function parseWavChunks(buffer) {
+      if (buffer.byteLength < 12) return null;
+      const view = new DataView(buffer);
+      const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+      const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+      if (riff !== 'RIFF' || wave !== 'WAVE') return null;
+
+      let offset = 12;
+      const chunks = [];
+      while (offset + 8 <= buffer.byteLength) {
+        const id = String.fromCharCode(view.getUint8(offset), view.getUint8(offset+1), view.getUint8(offset+2), view.getUint8(offset+3));
+        const size = view.getUint32(offset + 4, true);
+        const dataOffset = offset + 8;
+        if (dataOffset + size > buffer.byteLength) break;
+        const padding = (size % 2 !== 0) ? 1 : 0;
+        chunks.push({ id, size, offset, dataOffset, padding });
+        offset = dataOffset + size + padding;
+      }
+      return chunks;
+    }
+
+    function parseListInfo(buffer, chunk) {
+      const info = {};
+      if (chunk.size < 4) return info;
+      const view = new DataView(buffer, chunk.dataOffset + 4, chunk.size - 4);
+      let offset = 0;
+      const decoder = new TextDecoder("utf-8");
+      while (offset + 8 <= view.byteLength) {
+        const subId = String.fromCharCode(view.getUint8(offset), view.getUint8(offset+1), view.getUint8(offset+2), view.getUint8(offset+3));
+        const subSize = view.getUint32(offset + 4, true);
+        if (offset + 8 + subSize > view.byteLength) break;
+        const bytes = new Uint8Array(buffer, chunk.dataOffset + 4 + offset + 8, subSize);
+        const str = decoder.decode(bytes).replace(/\0/g, '').trim();
+        if (subId === 'INAM') info.title = str;
+        if (subId === 'IART') info.artist = str;
+        if (subId === 'IGNR') info.genre = str;
+        if (subId === 'ICRD') info.year = str;
+        offset += 8 + subSize + (subSize % 2 !== 0 ? 1 : 0);
+      }
+      return info;
+    }
+
     async function processAudioFile(file) {
-      if (!file || (!file.name.toLowerCase().endsWith('.mp3') && !file.name.toLowerCase().endsWith('.wav'))) {
+      const isWav = file.name.toLowerCase().endsWith('.wav');
+      const isMp3 = file.name.toLowerCase().endsWith('.mp3');
+      if (!file || (!isWav && !isMp3)) {
         alert("Пожалуйста, выберите файл .mp3 или .wav");
         return;
       }
       originalFileName = file.name;
       rawAudioBuffer = await file.arrayBuffer();
 
-      const writer = new MP3Tag(rawAudioBuffer.slice(0));
-      writer.read();
+      let tags = {};
+      let writer = null;
+      let listInfo = {};
 
-      const tags = writer.tags || {};
+      if (isWav) {
+        const chunks = parseWavChunks(rawAudioBuffer);
+        let id3Chunk = null;
+        let listInfoChunk = null;
+
+        if (chunks) {
+          for (const c of chunks) {
+            const idClean = c.id.toLowerCase().trim();
+            if (idClean === 'id3') {
+              id3Chunk = c;
+            } else if (c.id === 'LIST') {
+              const view = new DataView(rawAudioBuffer, c.dataOffset, 4);
+              const type = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+              if (type === 'INFO') listInfoChunk = c;
+            }
+          }
+        }
+
+        if (id3Chunk) {
+          const id3Buffer = rawAudioBuffer.slice(id3Chunk.dataOffset, id3Chunk.dataOffset + id3Chunk.size);
+          writer = new MP3Tag(id3Buffer);
+          writer.read();
+          tags = writer.tags || {};
+        }
+
+        if (listInfoChunk) {
+          listInfo = parseListInfo(rawAudioBuffer, listInfoChunk);
+        }
+      } else {
+        writer = new MP3Tag(rawAudioBuffer.slice(0));
+        writer.read();
+        tags = writer.tags || {};
+      }
+
+      writer = writer || { tags: {} };
       writer.tags.v2 = writer.tags.v2 || {};
 
-      // Функция надежного чтения тегов
-      function readTag(v1Val, v2Frame) {
+      function readTag(v1Val, v2Frame, fallbackVal) {
         if (v1Val && String(v1Val).trim() !== '') return String(v1Val).trim();
-        const v2 = writer.tags.v2[v2Frame];
-        if (!v2) return '';
-        if (typeof v2 === 'string' || typeof v2 === 'number') return String(v2).trim();
-        if (Array.isArray(v2) && v2.length > 0) {
-          const first = v2[0];
-          if (typeof first === 'string' || typeof first === 'number') return String(first).trim();
-          if (typeof first === 'object' && first !== null) return String(first.text || first.value || '').trim();
+        const v2 = writer.tags.v2 ? writer.tags.v2[v2Frame] : null;
+        if (v2) {
+          if (typeof v2 === 'string' || typeof v2 === 'number') return String(v2).trim();
+          if (Array.isArray(v2) && v2.length > 0) {
+            const first = v2[0];
+            if (typeof first === 'string' || typeof first === 'number') return String(first).trim();
+            if (typeof first === 'object' && first !== null) return String(first.text || first.value || '').trim();
+          }
+          if (typeof v2 === 'object' && v2 !== null) return String(v2.text || v2.value || '').trim();
         }
-        if (typeof v2 === 'object' && v2 !== null) return String(v2.text || v2.value || '').trim();
+        if (fallbackVal && String(fallbackVal).trim() !== '') return String(fallbackVal).trim();
         return '';
       }
 
-      document.getElementById("title").value = readTag(tags.title, 'TIT2');
-      document.getElementById("artist").value = readTag(tags.artist, 'TPE1');
+      document.getElementById("title").value = readTag(tags.title, 'TIT2', listInfo.title);
+      document.getElementById("artist").value = readTag(tags.artist, 'TPE1', listInfo.artist);
       document.getElementById("composer").value = readTag(tags.composer, 'TCOM');
       document.getElementById("key").value = readTag('', 'TKEY');
       document.getElementById("bpm").value = readTag('', 'TBPM');
-      document.getElementById("year").value = readTag(tags.year, 'TYER') || readTag('', 'TDRC');
-      document.getElementById("genre").value = readTag(tags.genre, 'TCON');
+      document.getElementById("year").value = readTag(tags.year, 'TYER', listInfo.year) || readTag('', 'TDRC');
+      document.getElementById("genre").value = readTag(tags.genre, 'TCON', listInfo.genre);
 
       const coverPreview = document.getElementById("coverPreview");
-      if (writer.tags.v2.APIC && Array.isArray(writer.tags.v2.APIC) && writer.tags.v2.APIC.length > 0) {
+      existingCoverData = null;
+
+      if (writer.tags.v2 && writer.tags.v2.APIC && Array.isArray(writer.tags.v2.APIC) && writer.tags.v2.APIC.length > 0) {
         const apic = writer.tags.v2.APIC[0];
         const mimeType = apic.mime || apic.format || "image/jpeg";
         if (apic.data && apic.data.length > 0) {
+          existingCoverData = {
+            format: mimeType,
+            mime: mimeType,
+            type: 3,
+            description: "",
+            data: apic.data
+          };
           const blob = new Blob([new Uint8Array(apic.data)], { type: mimeType });
           coverPreview.src = URL.createObjectURL(blob);
           coverPreview.style.display = "block";
@@ -162,9 +252,6 @@
       if (!rawAudioBuffer) return;
 
       const isWav = originalFileName.toLowerCase().endsWith('.wav');
-      const writer = new MP3Tag(rawAudioBuffer.slice(0));
-      writer.read();
-
       const titleVal = document.getElementById("title").value.trim();
       const artistVal = document.getElementById("artist").value.trim();
       const composerVal = document.getElementById("composer").value.trim();
@@ -173,51 +260,41 @@
       const yearVal = document.getElementById("year").value.trim();
       const genreVal = document.getElementById("genre").value.trim();
 
-      writer.tags.title = titleVal;
-      writer.tags.artist = artistVal;
-      writer.tags.genre = genreVal;
-      writer.tags.year = yearVal;
+      const tagWriter = new MP3Tag(new ArrayBuffer(0));
+      tagWriter.tags.title = titleVal;
+      tagWriter.tags.artist = artistVal;
+      tagWriter.tags.genre = genreVal;
+      tagWriter.tags.year = yearVal;
 
-      writer.tags.v2 = writer.tags.v2 || {};
-      writer.tags.v2.TIT2 = titleVal;
-      writer.tags.v2.TPE1 = artistVal;
-      writer.tags.v2.TCON = genreVal;
-      writer.tags.v2.TYER = yearVal;
-      writer.tags.v2.TDRC = yearVal;
+      tagWriter.tags.v2 = {
+        TIT2: titleVal,
+        TPE1: artistVal,
+        TCON: genreVal,
+        TYER: yearVal,
+        TDRC: yearVal
+      };
 
-      if (composerVal) writer.tags.v2.TCOM = composerVal;
-      if (keyVal) writer.tags.v2.TKEY = keyVal;
-      if (bpmVal) writer.tags.v2.TBPM = bpmVal;
+      if (composerVal) tagWriter.tags.v2.TCOM = composerVal;
+      if (keyVal) tagWriter.tags.v2.TKEY = keyVal;
+      if (bpmVal) tagWriter.tags.v2.TBPM = bpmVal;
 
       if (coverBuffer) {
-        writer.tags.v2.APIC = [{
+        tagWriter.tags.v2.APIC = [{
           format: coverMime,
           mime: coverMime,
           type: 3,
           description: "",
           data: Array.from(new Uint8Array(coverBuffer))
         }];
-      } else if (writer.tags.v2.APIC && Array.isArray(writer.tags.v2.APIC)) {
-        writer.tags.v2.APIC = writer.tags.v2.APIC.map(item => ({
-          format: item.format || item.mime || "image/jpeg",
-          mime: item.mime || item.format || "image/jpeg",
-          type: item.type || 3,
-          description: item.description || "",
-          data: item.data
-        }));
+      } else if (existingCoverData) {
+        tagWriter.tags.v2.APIC = [existingCoverData];
       }
 
-      // Важно: без опции id3v2, чтобы не ломать RIFF-заголовок WAV
-      writer.save({ strict: false });
+      tagWriter.save({ strict: false, id3v2: { include: true } });
 
-      if (writer.error) {
-        alert("Ошибка при сохранении: " + writer.error);
-        return;
-      }
-
-      // Формирование имени "Исполнитель - Название.ext"
-      const ext = isWav ? ".wav" : ".mp3";
       let downloadName = "";
+      const ext = isWav ? ".wav" : ".mp3";
+
       if (artistVal && titleVal) {
         downloadName = `${artistVal} - ${titleVal}${ext}`;
       } else if (titleVal) {
@@ -228,15 +305,80 @@
         downloadName = originalFileName;
       }
 
-      // Очистка от запрещенных символов Windows
       downloadName = downloadName.replace(/[/\\?%*:|"<>]/g, '_');
 
-      const blobMime = isWav ? "audio/wav" : "audio/mpeg";
-      const blob = new Blob([writer.buffer], { type: blobMime });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = downloadName;
-      link.click();
+      if (isWav) {
+        const id3Bytes = new Uint8Array(tagWriter.buffer);
+        const chunks = parseWavChunks(rawAudioBuffer) || [];
+        const retainedChunksData = [];
+
+        for (const chunk of chunks) {
+          const idClean = chunk.id.toLowerCase().trim();
+          if (idClean === 'id3') continue;
+          const totalChunkLen = 8 + chunk.size + chunk.padding;
+          const chunkBytes = new Uint8Array(rawAudioBuffer, chunk.offset, totalChunkLen);
+          retainedChunksData.push(chunkBytes);
+        }
+
+        const id3ChunkHeader = new Uint8Array(8);
+        id3ChunkHeader[0] = 0x69; // 'i'
+        id3ChunkHeader[1] = 0x64; // 'd'
+        id3ChunkHeader[2] = 0x33; // '3'
+        id3ChunkHeader[3] = 0x20; // ' '
+        const viewHeader = new DataView(id3ChunkHeader.buffer);
+        viewHeader.setUint32(4, id3Bytes.length, true);
+
+        const id3Padding = (id3Bytes.length % 2 !== 0) ? new Uint8Array([0]) : new Uint8Array(0);
+
+        let totalPayloadSize = 4;
+        for (const cb of retainedChunksData) {
+          totalPayloadSize += cb.length;
+        }
+        totalPayloadSize += 8 + id3Bytes.length + id3Padding.length;
+
+        const finalWavBuffer = new ArrayBuffer(8 + totalPayloadSize);
+        const finalUint8 = new Uint8Array(finalWavBuffer);
+        const finalView = new DataView(finalWavBuffer);
+
+        finalUint8[0] = 0x52; finalUint8[1] = 0x49; finalUint8[2] = 0x46; finalUint8[3] = 0x46; // 'RIFF'
+        finalView.setUint32(4, totalPayloadSize, true);
+        finalUint8[8] = 0x57; finalUint8[9] = 0x41; finalUint8[10] = 0x56; finalUint8[11] = 0x45; // 'WAVE'
+
+        let currentOffset = 12;
+        for (const cb of retainedChunksData) {
+          finalUint8.set(cb, currentOffset);
+          currentOffset += cb.length;
+        }
+
+        finalUint8.set(id3ChunkHeader, currentOffset);
+        currentOffset += 8;
+        finalUint8.set(id3Bytes, currentOffset);
+        currentOffset += id3Bytes.length;
+        if (id3Padding.length > 0) {
+          finalUint8.set(id3Padding, currentOffset);
+        }
+
+        const blob = new Blob([finalWavBuffer], { type: "audio/wav" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = downloadName;
+        link.click();
+      } else {
+        const mp3Writer = new MP3Tag(rawAudioBuffer.slice(0));
+        mp3Writer.read();
+        mp3Writer.tags.title = titleVal;
+        mp3Writer.tags.artist = artistVal;
+        mp3Writer.tags.genre = genreVal;
+        mp3Writer.tags.year = yearVal;
+        mp3Writer.tags.v2 = tagWriter.tags.v2;
+        mp3Writer.save({ strict: false });
+
+        const blob = new Blob([mp3Writer.buffer], { type: "audio/mpeg" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = downloadName;
+        link.click();
+      }
     });
   </script>
 </body>
