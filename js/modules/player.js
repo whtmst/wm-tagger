@@ -13,6 +13,11 @@ export async function setupPlayer(arrayBuffer, fileMime) {
   isPlaying = false;
   updatePlayBtnState();
 
+  const slider = document.getElementById("volumeSlider");
+  if (slider) {
+    currentVolume = parseFloat(slider.value);
+  }
+
   const blob = new Blob([arrayBuffer], { type: fileMime });
   const url = URL.createObjectURL(blob);
   audio = new Audio(url);
@@ -29,12 +34,28 @@ export async function setupPlayer(arrayBuffer, fileMime) {
   }
 
   renderWaveform(0);
+  initVolumeControl();
 
   audio.addEventListener("ended", () => {
     isPlaying = false;
     updatePlayBtnState();
     renderWaveform(0);
   });
+}
+
+function initVolumeControl() {
+  const slider = document.getElementById("volumeSlider");
+  if (!slider) return;
+
+  const handleVolume = (e) => {
+    currentVolume = Math.max(0, Math.min(1, parseFloat(e.target.value)));
+    if (audio) {
+      audio.volume = currentVolume;
+    }
+  };
+
+  slider.oninput = handleVolume;
+  slider.onchange = handleVolume;
 }
 
 function extractPeaks(buffer) {
@@ -120,13 +141,6 @@ export function seekTo(ratio) {
   if (!audio || !audio.duration) return;
   audio.currentTime = ratio * audio.duration;
   renderWaveform(ratio);
-}
-
-export function setVolume(value) {
-  currentVolume = Math.max(0, Math.min(1, value));
-  if (audio) {
-    audio.volume = currentVolume;
-  }
 }
 
 function updatePlayBtnState() {
