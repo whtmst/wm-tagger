@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WM Tagger - Audio Tag Editor</title>
+  <script src="https://cdn.jsdelivr.net/npm/mp3tag.js@latest/dist/mp3tag.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121214; color: #e0e0e6; padding: 20px; margin: 0; }
+    .container { max-width: 550px; margin: 0 auto; background: #1a1a1e; border: 1px solid #2e2e35; border-radius: 12px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    h2 { margin-top: 0; text-align: center; color: #fff; }
+    .field { margin-bottom: 14px; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; color: #a0a0ab; }
+    input[type="text"], input[type="number"], input[type="file"] { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #33333d; background: #24242a; color: #fff; font-size: 14px; }
+    input[type="file"] { cursor: pointer; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    button { background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; font-size: 15px; margin-top: 10px; }
+    button:hover { background: #2563eb; }
+    #coverPreview { max-width: 120px; border-radius: 6px; margin-top: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Редактор тегов (MP3 / WAV)</h2>
+    <div class="field">
+      <label>Выбери аудиофайл (.mp3 или .wav)</label>
+      <input type="file" id="audioFile" accept=".mp3,.wav,audio/mpeg,audio/wav">
+    </div>
+
+    <div id="form" style="display:none;">
+      <div class="field"><label>Название трека</label><input type="text" id="title"></div>
+      <div class="grid">
+        <div class="field"><label>Исполнитель</label><input type="text" id="artist"></div>
+        <div class="field"><label>Композитор</label><input type="text" id="composer"></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Тональность (Key)</label><input type="text" id="key" placeholder="например, 8A или Cmin"></div>
+        <div class="field"><label>BPM</label><input type="number" id="bpm" placeholder="128"></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label>Год</label><input type="text" id="year"></div>
+        <div class="field"><label>Жанр</label><input type="text" id="genre"></div>
+      </div>
+      <div class="field">
+        <label>Обложка (JPG / PNG)</label>
+        <input type="file" id="coverFile" accept="image/jpeg,image/png">
+        <img id="coverPreview" alt="Preview">
+      </div>
+      <button id="saveBtn">Сохранить и скачать</button>
+    </div>
+  </div>
+
+  <script>
+    let currentBuffer = null;
+    let originalFileName = "";
+    let coverBuffer = null;
+    let coverMime = "";
+
+    document.getElementById("audioFile").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      originalFileName = file.name;
+      currentBuffer = await file.arrayBuffer();
+
+      const writer = new MP3Tag(currentBuffer);
+      writer.read();
+
+      const tags = writer.tags;
+      document.getElementById("title").value = tags.title || "";
+      document.getElementById("artist").value = tags.artist || "";
+      document.getElementById("composer").value = tags.v2?.TCOM || tags.composer || "";
+      document.getElementById("key").value = tags.v2?.TKEY || "";
+      document.getElementById("bpm").value = tags.v2?.TBPM || "";
+      document.getElementById("year").value = tags.year || tags.v2?.DRC || "";
+      document.getElementById("genre").value = tags.genre || "";
+
+      const coverPreview = document.getElementById("coverPreview");
+      if (tags.v2?.APIC && tags.v2.APIC[0]) {
+        const apic = tags.v2.APIC[0];
+        const blob = new Blob([new Uint8Array(apic.data)], { type: apic.mime });
+        coverPreview.src = URL.createObjectURL(blob);
+        coverPreview.style.display = "block";
+      } else {
+        coverPreview.style.display = "none";
+      }
+
+      document.getElementById("form").style.display = "block";
+    });
+
+    document.getElementById("coverFile").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      coverMime = file.type;
+      coverBuffer = await file.arrayBuffer();
+      const preview = document.getElementById("coverPreview");
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = "block";
+    });
+
+    document.getElementById("saveBtn").addEventListener("click", () => {
+      if (!currentBuffer) return;
+
+      const writer = new MP3Tag(currentBuffer);
+      writer.read();
+
+      writer.tags.title = document.getElementById("title").value;
+      writer.tags.artist = document.getElementById("artist").value;
+      writer.tags.genre = document.getElementById("genre").value;
+      writer.tags.year = document.getElementById("year").value;
+
+      writer.tags.v2 = writer.tags.v2 || {};
+      writer.tags.v2.TCOM = document.getElementById("composer").value;
+      writer.tags.v2.TKEY = document.getElementById("key").value;
+      writer.tags.v2.TBPM = document.getElementById("bpm").value;
+
+      if (coverBuffer) {
+        writer.tags.v2.APIC = [{
+          type: 3,
+          mime: coverMime,
+          description: "",
+          data: Array.from(new Uint8Array(coverBuffer))
+        }];
+      }
+
+      writer.save();
+
+      if (writer.error) {
+        alert("Ошибка при сохранении: " + writer.error);
+        return;
+      }
+
+      const blob = new Blob([writer.buffer], { type: "audio/mpeg" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "tagged_" + originalFileName;
+      link.click();
+    });
+  </script>
+</body>
+</html>
