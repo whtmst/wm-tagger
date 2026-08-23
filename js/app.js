@@ -1,7 +1,7 @@
 import { parseRiffChunks, parseListInfo, extractId3FromWav, injectId3IntoWav } from './modules/riff.js';
 import { buildId3TagBuffer, readTagValue, readCustomTxxxValue, readCommentValue } from './modules/id3.js';
 import { calculateLUFS } from './modules/lufs.js';
-import { setupPlayer, togglePlay, seekTo, renderWaveform } from './modules/player.js';
+import { setupPlayer, togglePlay, seekTo, setVolume } from './modules/player.js';
 
 let rawAudioBuffer = null;
 let originalFileName = "";
@@ -20,6 +20,7 @@ const calcLufsBtn = document.getElementById('calcLufsBtn');
 const lufsInput = document.getElementById('lufs');
 const playPauseBtn = document.getElementById('playPauseBtn');
 const waveformWrapper = document.getElementById('waveformWrapper');
+const volumeSlider = document.getElementById('volumeSlider');
 
 function setStatus(text, isErr) {
   statusLine.textContent = text || "";
@@ -49,7 +50,7 @@ audioFileInput.addEventListener("change", e => {
 async function processAudioFile(file) {
   const lower = file.name.toLowerCase();
   if (!lower.endsWith('.mp3') && !lower.endsWith('.wav')) {
-    alert("Пожалуйста, выберите файл .mp3 или .wav");
+    alert("Please select an .mp3 or .wav file");
     return;
   }
   isWav = lower.endsWith('.wav');
@@ -58,7 +59,7 @@ async function processAudioFile(file) {
   setStatus('', false);
 
   form.style.display = "block";
-  dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
+  dropZone.querySelector('label').innerHTML = `Loaded: <strong>${originalFileName}</strong><br>(drag another to replace)`;
 
   const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
   await setupPlayer(rawAudioBuffer, mimeType);
@@ -90,7 +91,7 @@ async function processAudioFile(file) {
       v2 = reader.tags.v2 || {};
     }
   } catch (e) {
-    setStatus('Не удалось прочитать теги: ' + e.message, true);
+    setStatus('Failed to read tags: ' + e.message, true);
   }
 
   document.getElementById("title").value = readTagValue(v2, 'TIT2', listInfo.title);
@@ -136,21 +137,25 @@ waveformWrapper.addEventListener("click", e => {
   seekTo(ratio);
 });
 
+volumeSlider.addEventListener("input", e => {
+  setVolume(parseFloat(e.target.value));
+});
+
 calcLufsBtn.addEventListener("click", async () => {
   if (!rawAudioBuffer) return;
   calcLufsBtn.disabled = true;
   calcLufsBtn.textContent = "...";
-  setStatus('Идет анализ громкости...', false);
+  setStatus('Analyzing loudness...', false);
 
   try {
     const result = await calculateLUFS(rawAudioBuffer);
     lufsInput.value = result;
-    setStatus('Анализ громкости завершен', false);
+    setStatus('Loudness analysis complete', false);
   } catch (e) {
-    setStatus('Ошибка анализа LUFS: ' + e.message, true);
+    setStatus('LUFS analysis error: ' + e.message, true);
   } finally {
     calcLufsBtn.disabled = false;
-    calcLufsBtn.textContent = "Замер";
+    calcLufsBtn.textContent = "Analyze";
   }
 });
 
@@ -176,7 +181,7 @@ removeCoverBtn.addEventListener("click", () => {
 
 document.getElementById("saveBtn").addEventListener("click", () => {
   if (!rawAudioBuffer) return;
-  setStatus('Сохраняю...', false);
+  setStatus('Saving...', false);
 
   const values = {
     title: document.getElementById("title").value.trim(),
@@ -255,8 +260,8 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     link.download = downloadName;
     link.click();
 
-    setStatus('Готово - файл скачан', false);
+    setStatus('Done - file downloaded', false);
   } catch (e) {
-    setStatus('Ошибка сохранения: ' + e.message, true);
+    setStatus('Save error: ' + e.message, true);
   }
 });
