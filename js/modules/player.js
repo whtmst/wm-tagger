@@ -16,11 +16,16 @@ export async function setupPlayer(arrayBuffer, fileMime) {
   const url = URL.createObjectURL(blob);
   audio = new Audio(url);
 
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-  await ctx.close();
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    await ctx.close();
+    extractPeaks(audioBuffer);
+  } catch (e) {
+    console.error("Ошибка дешифровки аудио волны:", e);
+    peaks = new Array(100).fill(0.2);
+  }
 
-  extractPeaks(audioBuffer);
   renderWaveform(0);
 
   audio.addEventListener("ended", () => {
@@ -32,7 +37,7 @@ export async function setupPlayer(arrayBuffer, fileMime) {
 
 function extractPeaks(buffer) {
   const channelData = buffer.getChannelData(0);
-  const sampleCount = 140;
+  const sampleCount = 120;
   const blockSize = Math.floor(channelData.length / sampleCount);
   peaks = [];
 
@@ -52,26 +57,27 @@ function extractPeaks(buffer) {
 export function renderWaveform(progress = 0) {
   const canvas = document.getElementById("waveformCanvas");
   if (!canvas) return;
+  const container = canvas.parentElement;
+  if (!container) return;
+
+  const width = container.clientWidth || 300;
+  const height = container.clientHeight || 36;
+
+  canvas.width = width;
+  canvas.height = height;
+
   const ctx = canvas.getContext("2d");
-
-  const rect = canvas.getBoundingClientRect();
-  if (canvas.width !== rect.width) canvas.width = rect.width;
-  if (canvas.height !== rect.height) canvas.height = rect.height;
-
-  const width = canvas.width;
-  const height = canvas.height;
-
   ctx.clearRect(0, 0, width, height);
 
-  const barWidth = 3;
-  const gap = 1;
+  const barWidth = 2;
+  const gap = 2;
   const totalBarWidth = barWidth + gap;
   const totalBars = Math.floor(width / totalBarWidth);
 
   for (let i = 0; i < totalBars; i++) {
     const peakIndex = Math.floor((i / totalBars) * peaks.length);
     const val = peaks[peakIndex] || 0.05;
-    const barHeight = Math.max(3, val * (height - 4));
+    const barHeight = Math.max(2, val * (height - 6));
     const x = i * totalBarWidth;
     const y = (height - barHeight) / 2;
 
@@ -79,7 +85,7 @@ export function renderWaveform(progress = 0) {
     if (currentPos <= progress) {
       ctx.fillStyle = "#3b82f6";
     } else {
-      ctx.fillStyle = "#33333d";
+      ctx.fillStyle = "#3a3a42";
     }
 
     ctx.fillRect(x, y, barWidth, barHeight);
@@ -91,17 +97,19 @@ export function togglePlay() {
   if (isPlaying) {
     audio.pause();
     isPlaying = false;
+    updatePlayBtnState();
   } else {
-    audio.play();
-    isPlaying = true;
-    trackProgress();
+    audio.play().then(() => {
+      isPlaying = true;
+      updatePlayBtnState();
+      trackProgress();
+    }).catch(err => console.error("Ошибка автоплея:", err));
   }
-  updatePlayBtnState();
 }
 
 function trackProgress() {
   if (!isPlaying || !audio) return;
-  const progress = audio.currentTime / audio.duration;
+  const progress = audio.currentTime / (audio.duration || 1);
   renderWaveform(progress);
   animationId = requestAnimationFrame(trackProgress);
 }
