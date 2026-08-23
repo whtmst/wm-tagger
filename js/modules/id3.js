@@ -11,6 +11,14 @@ export function buildId3TagBuffer(values, coverBytes, coverMime) {
   if (values.bpm) t.tags.v2.TBPM = values.bpm;
   if (values.key) t.tags.v2.TKEY = values.key;
 
+  if (values.lufs) {
+    t.tags.v2.TXXX = [{ description: 'LUFS', text: values.lufs }];
+  }
+
+  if (values.comment) {
+    t.tags.v2.COMM = [{ language: 'eng', descriptor: '', text: values.comment }];
+  }
+
   if (coverBytes) {
     t.tags.v2.APIC = [{
       format: coverMime, mime: coverMime, type: 3, description: '',
@@ -41,5 +49,25 @@ export function readTagValue(v2, frame, fallback) {
     if (typeof v === 'object') return String(v.text || v.value || '').trim();
   }
   if (fallback && String(fallback).trim() !== '') return String(fallback).trim();
+  return '';
+}
+
+export function readCustomTxxxValue(v2, description) {
+  if (Array.isArray(v2.TXXX)) {
+    const found = v2.TXXX.find(item => item && item.description && item.description.toUpperCase() === description.toUpperCase());
+    if (found) return String(found.text || found.value || '').trim();
+  }
+  return '';
+}
+
+export function readCommentValue(v2) {
+  const comm = v2.COMM;
+  if (Array.isArray(comm) && comm.length > 0) {
+    return String(comm[0].text || comm[0].value || '').trim();
+  }
+  if (typeof comm === 'object' && comm !== null) {
+    return String(comm.text || comm.value || '').trim();
+  }
+  if (typeof comm === 'string') return comm.trim();
   return '';
 }
