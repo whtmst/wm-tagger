@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,7 +13,7 @@
     <h2>WM Tagger</h2>
 
     <div class="field drop-zone" id="dropZone">
-      <label for="audioFile">Перетащите файл (.mp3 или .wav) сюда или нажмите для выбора</label>
+      <label for="audioFile">Drop audio file (.mp3 or .wav) here or click to browse</label>
       <input type="file" id="audioFile" accept=".mp3,.wav,audio/mpeg,audio/wav">
     </div>
 
@@ -23,38 +23,41 @@
         <div class="waveform-wrapper" id="waveformWrapper">
           <canvas id="waveformCanvas"></canvas>
         </div>
+        <div class="volume-control">
+          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="0.8" title="Volume">
+        </div>
       </div>
 
-      <div class="field"><label>Название трека</label><input type="text" id="title"></div>
+      <div class="field"><label>Title</label><input type="text" id="title"></div>
       <div class="grid">
-        <div class="field"><label>Исполнитель</label><input type="text" id="artist"></div>
-        <div class="field"><label>Композитор</label><input type="text" id="composer"></div>
+        <div class="field"><label>Artist</label><input type="text" id="artist"></div>
+        <div class="field"><label>Composer</label><input type="text" id="composer"></div>
       </div>
       <div class="grid">
-        <div class="field"><label>Тональность (Key)</label><input type="text" id="key" placeholder="например, 8A или Cmin"></div>
+        <div class="field"><label>Key</label><input type="text" id="key" placeholder="e.g. 8A or Cmin"></div>
         <div class="field"><label>BPM</label><input type="number" id="bpm" placeholder="128"></div>
       </div>
       <div class="grid">
-        <div class="field"><label>Год</label><input type="text" id="year"></div>
-        <div class="field"><label>Жанр</label><input type="text" id="genre"></div>
+        <div class="field"><label>Year</label><input type="text" id="year"></div>
+        <div class="field"><label>Genre</label><input type="text" id="genre"></div>
       </div>
       <div class="grid">
         <div class="field">
-          <label>Громкость (LUFS)</label>
+          <label>LUFS</label>
           <div class="input-with-btn">
             <input type="text" id="lufs" placeholder="-9.0 LUFS">
-            <button type="button" id="calcLufsBtn" class="btn-inline" title="Рассчитать средний LUFS">Замер</button>
+            <button type="button" id="calcLufsBtn" class="btn-inline" title="Calculate integrated LUFS">Analyze</button>
           </div>
         </div>
-        <div class="field"><label>Комментарий</label><input type="text" id="comment" placeholder="Заметки или ссылка"></div>
+        <div class="field"><label>Comment</label><input type="text" id="comment" placeholder="Notes or URL"></div>
       </div>
       <div class="field">
-        <label>Обложка (JPG / PNG)</label>
+        <label>Artwork (JPG / PNG)</label>
         <input type="file" id="coverFile" accept="image/jpeg,image/png" class="field-input">
         <img id="coverPreview" alt="Artwork Preview">
-        <button type="button" id="removeCoverBtn" class="btn-danger">Удалить обложку</button>
+        <button type="button" id="removeCoverBtn" class="btn-danger">Remove Artwork</button>
       </div>
-      <button id="saveBtn">Сохранить и скачать</button>
+      <button id="saveBtn">Save & Download</button>
       <div id="statusLine" class="status-line"></div>
     </div>
   </div>
