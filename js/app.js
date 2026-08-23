@@ -1,6 +1,7 @@
 import { parseRiffChunks, parseListInfo, extractId3FromWav, injectId3IntoWav } from './modules/riff.js';
 import { buildId3TagBuffer, readTagValue, readCustomTxxxValue, readCommentValue } from './modules/id3.js';
 import { calculateLUFS } from './modules/lufs.js';
+import { setupPlayer, togglePlay, seekTo } from './modules/player.js';
 
 let rawAudioBuffer = null;
 let originalFileName = "";
@@ -17,6 +18,8 @@ const removeCoverBtn = document.getElementById('removeCoverBtn');
 const coverPreview = document.getElementById('coverPreview');
 const calcLufsBtn = document.getElementById('calcLufsBtn');
 const lufsInput = document.getElementById('lufs');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const waveformWrapper = document.getElementById('waveformWrapper');
 
 function setStatus(text, isErr) {
   statusLine.textContent = text || "";
@@ -54,6 +57,9 @@ async function processAudioFile(file) {
   rawAudioBuffer = await file.arrayBuffer();
   setStatus('', false);
 
+  const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
+  await setupPlayer(rawAudioBuffer, mimeType);
+
   let v2 = {};
   let listInfo = {};
 
@@ -76,9 +82,9 @@ async function processAudioFile(file) {
         v2 = reader.tags.v2 || {};
       }
     } else {
-          const reader = new MP3Tag(rawAudioBuffer.slice(0));
-          reader.read();
-          v2 = reader.tags.v2 || {};
+      const reader = new MP3Tag(rawAudioBuffer.slice(0));
+      reader.read();
+      v2 = reader.tags.v2 || {};
     }
   } catch (e) {
     setStatus('Не удалось прочитать теги: ' + e.message, true);
@@ -91,7 +97,7 @@ async function processAudioFile(file) {
   document.getElementById("bpm").value = readTagValue(v2, 'TBPM');
   document.getElementById("year").value = readTagValue(v2, 'TDRC', listInfo.year) || readTagValue(v2, 'TYER');
   document.getElementById("genre").value = readTagValue(v2, 'TCON', listInfo.genre);
-  
+
   lufsInput.value = readCustomTxxxValue(v2, 'LUFS');
   document.getElementById("comment").value = readCommentValue(v2);
 
@@ -120,6 +126,15 @@ async function processAudioFile(file) {
   form.style.display = "block";
   dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
 }
+
+playPauseBtn.addEventListener("click", togglePlay);
+
+waveformWrapper.addEventListener("click", e => {
+  const rect = waveformWrapper.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+  seekTo(ratio);
+});
 
 calcLufsBtn.addEventListener("click", async () => {
   if (!rawAudioBuffer) return;
