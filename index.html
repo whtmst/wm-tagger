@@ -18,6 +18,13 @@
     </div>
 
     <div id="form" style="display:none;">
+      <div class="player-container">
+        <button type="button" id="playPauseBtn" class="play-btn">Play</button>
+        <div class="waveform-wrapper" id="waveformWrapper">
+          <canvas id="waveformCanvas"></canvas>
+        </div>
+      </div>
+
       <div class="field"><label>Название трека</label><input type="text" id="title"></div>
       <div class="grid">
         <div class="field"><label>Исполнитель</label><input type="text" id="artist"></div>
@@ -39,7 +46,7 @@
             <button type="button" id="calcLufsBtn" class="btn-inline" title="Рассчитать средний LUFS">Замер</button>
           </div>
         </div>
-        <div class="field"><label>Комментарий</label><input type="text" id="comment" placeholder="Любые заметки или ссылка"></div>
+        <div class="field"><label>Комментарий</label><input type="text" id="comment" placeholder="Заметки или ссылка"></div>
       </div>
       <div class="field">
         <label>Обложка (JPG / PNG)</label>
