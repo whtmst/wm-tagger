@@ -1,7 +1,7 @@
 import { parseRiffChunks, parseListInfo, extractId3FromWav, injectId3IntoWav } from './modules/riff.js';
 import { buildId3TagBuffer, readTagValue, readCustomTxxxValue, readCommentValue } from './modules/id3.js';
 import { calculateLUFS } from './modules/lufs.js';
-import { setupPlayer, togglePlay, seekTo, setVolume } from './modules/player.js';
+import { setupPlayer, togglePlay, seekTo } from './modules/player.js';
 
 let rawAudioBuffer = null;
 let originalFileName = "";
@@ -20,7 +20,6 @@ const calcLufsBtn = document.getElementById('calcLufsBtn');
 const lufsInput = document.getElementById('lufs');
 const playPauseBtn = document.getElementById('playPauseBtn');
 const waveformWrapper = document.getElementById('waveformWrapper');
-const volumeSlider = document.getElementById('volumeSlider');
 
 function setStatus(text, isErr) {
   statusLine.textContent = text || "";
@@ -135,10 +134,6 @@ waveformWrapper.addEventListener("click", e => {
   const clickX = e.clientX - rect.left;
   const ratio = Math.max(0, Math.min(1, clickX / rect.width));
   seekTo(ratio);
-});
-
-volumeSlider.addEventListener("input", e => {
-  setVolume(parseFloat(e.target.value));
 });
 
 calcLufsBtn.addEventListener("click", async () => {
