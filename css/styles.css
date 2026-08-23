@@ -28,3 +28,7 @@ button:hover { background: #2563eb; }
 .play-btn:hover { background: #2563eb; }
 .waveform-wrapper { flex: 1; display: flex; align-items: center; cursor: pointer; height: 36px; overflow: hidden; position: relative; }
 #waveformCanvas { width: 100%; height: 36px; display: block; }
+.volume-control { display: flex; align-items: center; width: 65px; flex-shrink: 0; }
+.volume-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: #33333d; outline: none; cursor: pointer; }
+.volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; cursor: pointer; }
+.volume-slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; cursor: pointer; border: none; }
