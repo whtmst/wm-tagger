@@ -1,7 +1,7 @@
 import { parseRiffChunks, parseListInfo, extractId3FromWav, injectId3IntoWav } from './modules/riff.js';
 import { buildId3TagBuffer, readTagValue, readCustomTxxxValue, readCommentValue } from './modules/id3.js';
 import { calculateLUFS } from './modules/lufs.js';
-import { setupPlayer, togglePlay, seekTo } from './modules/player.js';
+import { setupPlayer, togglePlay, seekTo, renderWaveform } from './modules/player.js';
 
 let rawAudioBuffer = null;
 let originalFileName = "";
@@ -56,6 +56,9 @@ async function processAudioFile(file) {
   originalFileName = file.name;
   rawAudioBuffer = await file.arrayBuffer();
   setStatus('', false);
+
+  form.style.display = "block";
+  dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
 
   const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
   await setupPlayer(rawAudioBuffer, mimeType);
@@ -122,9 +125,6 @@ async function processAudioFile(file) {
     coverPreview.style.display = "none";
     removeCoverBtn.style.display = "none";
   }
-
-  form.style.display = "block";
-  dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
 }
 
 playPauseBtn.addEventListener("click", togglePlay);
