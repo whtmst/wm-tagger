@@ -2,6 +2,7 @@ let audio = null;
 let peaks = [];
 let isPlaying = false;
 let animationId = null;
+let currentVolume = 0.8;
 
 export async function setupPlayer(arrayBuffer, fileMime) {
   if (audio) {
@@ -15,6 +16,7 @@ export async function setupPlayer(arrayBuffer, fileMime) {
   const blob = new Blob([arrayBuffer], { type: fileMime });
   const url = URL.createObjectURL(blob);
   audio = new Audio(url);
+  audio.volume = currentVolume;
 
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -22,8 +24,8 @@ export async function setupPlayer(arrayBuffer, fileMime) {
     await ctx.close();
     extractPeaks(audioBuffer);
   } catch (e) {
-    console.error("Ошибка дешифровки аудио волны:", e);
-    peaks = new Array(100).fill(0.2);
+    console.error("Audio decoding error:", e);
+    peaks = new Array(120).fill(0.2);
   }
 
   renderWaveform(0);
@@ -103,7 +105,7 @@ export function togglePlay() {
       isPlaying = true;
       updatePlayBtnState();
       trackProgress();
-    }).catch(err => console.error("Ошибка автоплея:", err));
+    }).catch(err => console.error("Autoplay error:", err));
   }
 }
 
@@ -118,6 +120,13 @@ export function seekTo(ratio) {
   if (!audio || !audio.duration) return;
   audio.currentTime = ratio * audio.duration;
   renderWaveform(ratio);
+}
+
+export function setVolume(value) {
+  currentVolume = Math.max(0, Math.min(1, value));
+  if (audio) {
+    audio.volume = currentVolume;
+  }
 }
 
 function updatePlayBtnState() {
