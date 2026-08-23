@@ -4,37 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WM Tagger - Audio Tag Editor</title>
-  <!-- Библиотека для работы с тегами MP3/WAV в браузере -->
   <script src="https://cdn.jsdelivr.net/npm/mp3tag.js@latest/dist/mp3tag.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121214; color: #e0e0e6; padding: 20px; margin: 0; }
     .container { max-width: 550px; margin: 0 auto; background: #1a1a1e; border: 1px solid #2e2e35; border-radius: 12px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    
-    /* Стили заголовка (WM Tagger) */
     h2 { margin-top: 0; text-align: center; color: #fff; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; }
-
-    /* Стили для Drag-and-Drop зоны */
     .field { margin-bottom: 14px; }
     .drop-zone { border: 2px dashed #33333d; padding: 30px; border-radius: 8px; text-align: center; background: #24242a; transition: border-color 0.3s, background-color 0.3s, color 0.3s; cursor: pointer; color: #a0a0ab; font-size: 14px; }
     .drop-zone.hover { border-color: #3b82f6; background-color: #1a1a1e; color: #fff; }
     .drop-zone label { display: block; cursor: pointer; }
-    /* Скрываем стандартный инпут, чтобы Drag-and-Drop был главным */
     .drop-zone input[type="file"] { position: absolute; width: 0; height: 0; opacity: 0; }
-
-    /* Обычные инпуты */
     input[type="text"], input[type="number"], input[type="file"].field-input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #33333d; background: #24242a; color: #fff; font-size: 14px; }
-    input[type="file"].field-input { cursor: pointer; padding: 7px; } /* Небольшая корректировка для файл-инпута обложки */
+    input[type="file"].field-input { cursor: pointer; padding: 7px; }
     label { display: block; margin-bottom: 6px; font-size: 13px; color: #a0a0ab; }
-
-    /* Сетка полей ввода */
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    
-    /* Кнопка */
     button { background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; font-size: 15px; margin-top: 10px; }
     button:hover { background: #2563eb; }
-    
-    /* Предпросмотр обложки */
     #coverPreview { max-width: 120px; border-radius: 6px; margin-top: 8px; display: none; }
   </style>
 </head>
@@ -42,13 +28,11 @@
   <div class="container">
     <h2>WM Tagger</h2>
     
-    <!-- Переработанная Drag-and-Drop зона -->
     <div class="field drop-zone" id="dropZone">
       <label for="audioFile">Перетащите файл (.mp3 или .wav) сюда или нажмите для выбора</label>
       <input type="file" id="audioFile" accept=".mp3,.wav,audio/mpeg,audio/wav">
     </div>
 
-    <!-- Скрытая форма, которая появляется после загрузки файла -->
     <div id="form" style="display:none;">
       <div class="field"><label>Название трека</label><input type="text" id="title"></div>
       <div class="grid">
@@ -65,7 +49,6 @@
       </div>
       <div class="field">
         <label>Обложка (JPG / PNG)</label>
-        <!-- Обычный инпут для выбора обложки (по клику) -->
         <input type="file" id="coverFile" accept="image/jpeg,image/png" class="field-input">
         <img id="coverPreview" alt="Artwork Preview">
       </div>
@@ -74,7 +57,7 @@
   </div>
 
   <script>
-    let currentBuffer = null;
+    let rawAudioBuffer = null;
     let originalFileName = "";
     let coverBuffer = null;
     let coverMime = "";
@@ -83,140 +66,140 @@
     const audioFileInput = document.getElementById('audioFile');
     const form = document.getElementById('form');
 
-    // --- Обработка событий Drag-and-Drop ---
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, preventDefaults, false);
+      dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
     });
 
-    function preventDefaults(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Визуальный эффект при перетаскивании над зоной
     ['dragenter', 'dragover'].forEach(eventName => {
-      dropZone.addEventListener(eventName, highlight, false);
+      dropZone.addEventListener(eventName, () => dropZone.classList.add('hover'), false);
     });
     ['dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, unhighlight, false);
+      dropZone.addEventListener(eventName, () => dropZone.classList.remove('hover'), false);
     });
 
-    function highlight(e) { dropZone.classList.add('hover'); }
-    function unhighlight(e) { dropZone.classList.remove('hover'); }
-
-    // Обработка сброса файла (Drop)
-    dropZone.addEventListener('drop', handleDrop, false);
-
-    function handleDrop(e) {
-      const dt = e.dataTransfer;
-      const file = dt.files[0];
+    dropZone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
       if (file) processAudioFile(file);
-    }
+    });
 
-    // Обработка обычного выбора файла (клик)
-    audioFileInput.addEventListener("change", (e) => {
+    audioFileInput.addEventListener("change", e => {
       const file = e.target.files[0];
       if (file) processAudioFile(file);
     });
 
-    // --- Основная логика обработки аудиофайла (прежняя, рабочая) ---
     async function processAudioFile(file) {
-      if (!file || (!file.name.endsWith('.mp3') && !file.name.endsWith('.wav'))) {
+      if (!file || (!file.name.toLowerCase().endsWith('.mp3') && !file.name.toLowerCase().endsWith('.wav'))) {
         alert("Пожалуйста, выберите файл .mp3 или .wav");
         return;
       }
       originalFileName = file.name;
-      // Используем slice(0) для создания копии ArrayBuffer
-      currentBuffer = await file.arrayBuffer();
+      rawAudioBuffer = await file.arrayBuffer();
 
-      // Считываем теги через копию буфера
-      const writer = new MP3Tag(currentBuffer.slice(0));
+      const writer = new MP3Tag(rawAudioBuffer.slice(0));
       writer.read();
 
-      const tags = writer.tags;
-      // Заполняем поля формы (прежняя логика)
-      document.getElementById("title").value = tags.title || "";
-      document.getElementById("artist").value = tags.artist || "";
-      document.getElementById("composer").value = tags.v2?.TCOM || tags.composer || "";
-      document.getElementById("key").value = tags.v2?.TKEY || "";
-      document.getElementById("bpm").value = tags.v2?.TBPM || "";
-      document.getElementById("year").value = tags.year || tags.v2?.DRC || "";
-      document.getElementById("genre").value = tags.genre || "";
+      const tags = writer.tags || {};
+      writer.tags.v2 = writer.tags.v2 || {};
+
+      // Функция надежного чтения тегов
+      function readTag(v1Val, v2Frame) {
+        if (v1Val && String(v1Val).trim() !== '') return String(v1Val).trim();
+        const v2 = writer.tags.v2[v2Frame];
+        if (!v2) return '';
+        if (typeof v2 === 'string' || typeof v2 === 'number') return String(v2).trim();
+        if (Array.isArray(v2) && v2.length > 0) {
+          const first = v2[0];
+          if (typeof first === 'string' || typeof first === 'number') return String(first).trim();
+          if (typeof first === 'object' && first !== null) return String(first.text || first.value || '').trim();
+        }
+        if (typeof v2 === 'object' && v2 !== null) return String(v2.text || v2.value || '').trim();
+        return '';
+      }
+
+      document.getElementById("title").value = readTag(tags.title, 'TIT2');
+      document.getElementById("artist").value = readTag(tags.artist, 'TPE1');
+      document.getElementById("composer").value = readTag(tags.composer, 'TCOM');
+      document.getElementById("key").value = readTag('', 'TKEY');
+      document.getElementById("bpm").value = readTag('', 'TBPM');
+      document.getElementById("year").value = readTag(tags.year, 'TYER') || readTag('', 'TDRC');
+      document.getElementById("genre").value = readTag(tags.genre, 'TCON');
 
       const coverPreview = document.getElementById("coverPreview");
-      if (tags.v2?.APIC && tags.v2.APIC[0]) {
-        const apic = tags.v2.APIC[0];
-        // Поддерживаем формат или mime для совместимости
+      if (writer.tags.v2.APIC && Array.isArray(writer.tags.v2.APIC) && writer.tags.v2.APIC.length > 0) {
+        const apic = writer.tags.v2.APIC[0];
         const mimeType = apic.mime || apic.format || "image/jpeg";
-        const blob = new Blob([new Uint8Array(apic.data)], { type: mimeType });
-        coverPreview.src = URL.createObjectURL(blob);
-        coverPreview.style.display = "block";
+        if (apic.data && apic.data.length > 0) {
+          const blob = new Blob([new Uint8Array(apic.data)], { type: mimeType });
+          coverPreview.src = URL.createObjectURL(blob);
+          coverPreview.style.display = "block";
+        } else {
+          coverPreview.src = "";
+          coverPreview.style.display = "none";
+        }
       } else {
-        coverPreview.src = ""; // Очищаем старую
+        coverPreview.src = "";
         coverPreview.style.display = "none";
       }
 
-      // Сбрасываем буфер новой обложки
       coverBuffer = null;
       coverMime = "";
 
-      // Показываем форму
       form.style.display = "block";
-      // Изменяем текст в зоне, чтобы показать, что файл принят
       dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
     }
 
-    // --- Обработка выбора обложки (клик, прежняя) ---
-    document.getElementById("coverFile").addEventListener("change", async (e) => {
+    document.getElementById("coverFile").addEventListener("change", async e => {
       const file = e.target.files[0];
       if (!file) return;
-      coverMime = file.type || "image/png";
+      coverMime = file.type || "image/jpeg";
       coverBuffer = await file.arrayBuffer();
       const preview = document.getElementById("coverPreview");
       preview.src = URL.createObjectURL(file);
       preview.style.display = "block";
     });
 
-    // --- Логика сохранения (прежняя, ИСПРАВЛЕННАЯ С strict: false и APIC) ---
     document.getElementById("saveBtn").addEventListener("click", () => {
-      if (!currentBuffer) return;
+      if (!rawAudioBuffer) return;
 
-      // Снова используем копию буфера перед сохранением
-      const writer = new MP3Tag(currentBuffer.slice(0));
+      const isWav = originalFileName.toLowerCase().endsWith('.wav');
+      const writer = new MP3Tag(rawAudioBuffer.slice(0));
       writer.read();
 
-      // Заполняем V1 теги (или базовые теги)
-      writer.tags.title = document.getElementById("title").value;
-      writer.tags.artist = document.getElementById("artist").value;
-      writer.tags.genre = document.getElementById("genre").value;
-      writer.tags.year = document.getElementById("year").value;
+      const titleVal = document.getElementById("title").value.trim();
+      const artistVal = document.getElementById("artist").value.trim();
+      const composerVal = document.getElementById("composer").value.trim();
+      const keyVal = document.getElementById("key").value.trim();
+      const bpmVal = document.getElementById("bpm").value.trim();
+      const yearVal = document.getElementById("year").value.trim();
+      const genreVal = document.getElementById("genre").value.trim();
+
+      writer.tags.title = titleVal;
+      writer.tags.artist = artistVal;
+      writer.tags.genre = genreVal;
+      writer.tags.year = yearVal;
 
       writer.tags.v2 = writer.tags.v2 || {};
-      
-      // Заполняем V2 теги (composer, key, bpm)
-      const composer = document.getElementById("composer").value;
-      if (composer) writer.tags.v2.TCOM = composer;
+      writer.tags.v2.TIT2 = titleVal;
+      writer.tags.v2.TPE1 = artistVal;
+      writer.tags.v2.TCON = genreVal;
+      writer.tags.v2.TYER = yearVal;
+      writer.tags.v2.TDRC = yearVal;
 
-      const key = document.getElementById("key").value;
-      if (key) writer.tags.v2.TKEY = key;
+      if (composerVal) writer.tags.v2.TCOM = composerVal;
+      if (keyVal) writer.tags.v2.TKEY = keyVal;
+      if (bpmVal) writer.tags.v2.TBPM = bpmVal;
 
-      const bpm = document.getElementById("bpm").value;
-      if (bpm) writer.tags.v2.TBPM = bpm;
-
-      // ОБРАБОТКА ОБЛОЖКИ (с исправлением format/mime)
       if (coverBuffer) {
-        // Добавляем новую обложку
         writer.tags.v2.APIC = [{
-          format: coverMime, // Жизненно важно для mp3tag.js!
+          format: coverMime,
           mime: coverMime,
-          type: 3, // Cover (front)
+          type: 3,
           description: "",
           data: Array.from(new Uint8Array(coverBuffer))
         }];
       } else if (writer.tags.v2.APIC && Array.isArray(writer.tags.v2.APIC)) {
-        // Сохраняем существующую обложку, гарантируя наличие format и mime
         writer.tags.v2.APIC = writer.tags.v2.APIC.map(item => ({
-          format: item.format || item.mime || "image/jpeg", // Восстанавливаем format, если нет
+          format: item.format || item.mime || "image/jpeg",
           mime: item.mime || item.format || "image/jpeg",
           type: item.type || 3,
           description: item.description || "",
@@ -224,7 +207,7 @@
         }));
       }
 
-      // СОХРАНЯЕМ С strict: false (исправление прошлой ошибки)
+      // Важно: без опции id3v2, чтобы не ломать RIFF-заголовок WAV
       writer.save({ strict: false });
 
       if (writer.error) {
@@ -232,11 +215,27 @@
         return;
       }
 
-      // Отдаём файл пользователю (сохраняем тип audio/mpeg для корректного скачивания)
-      const blob = new Blob([writer.buffer], { type: "audio/mpeg" });
+      // Формирование имени "Исполнитель - Название.ext"
+      const ext = isWav ? ".wav" : ".mp3";
+      let downloadName = "";
+      if (artistVal && titleVal) {
+        downloadName = `${artistVal} - ${titleVal}${ext}`;
+      } else if (titleVal) {
+        downloadName = `${titleVal}${ext}`;
+      } else if (artistVal) {
+        downloadName = `${artistVal}${ext}`;
+      } else {
+        downloadName = originalFileName;
+      }
+
+      // Очистка от запрещенных символов Windows
+      downloadName = downloadName.replace(/[/\\?%*:|"<>]/g, '_');
+
+      const blobMime = isWav ? "audio/wav" : "audio/mpeg";
+      const blob = new Blob([writer.buffer], { type: blobMime });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = "tagged_" + originalFileName;
+      link.download = downloadName;
       link.click();
     });
   </script>
