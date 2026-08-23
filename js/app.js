@@ -1,5 +1,6 @@
 import { parseRiffChunks, parseListInfo, extractId3FromWav, injectId3IntoWav } from './modules/riff.js';
-import { buildId3TagBuffer, readTagValue } from './modules/id3.js';
+import { buildId3TagBuffer, readTagValue, readCustomTxxxValue, readCommentValue } from './modules/id3.js';
+import { calculateLUFS } from './modules/lufs.js';
 
 let rawAudioBuffer = null;
 let originalFileName = "";
@@ -14,6 +15,8 @@ const form = document.getElementById('form');
 const statusLine = document.getElementById('statusLine');
 const removeCoverBtn = document.getElementById('removeCoverBtn');
 const coverPreview = document.getElementById('coverPreview');
+const calcLufsBtn = document.getElementById('calcLufsBtn');
+const lufsInput = document.getElementById('lufs');
 
 function setStatus(text, isErr) {
   statusLine.textContent = text || "";
@@ -73,9 +76,9 @@ async function processAudioFile(file) {
         v2 = reader.tags.v2 || {};
       }
     } else {
-      const reader = new MP3Tag(rawAudioBuffer.slice(0));
-      reader.read();
-      v2 = reader.tags.v2 || {};
+          const reader = new MP3Tag(rawAudioBuffer.slice(0));
+          reader.read();
+          v2 = reader.tags.v2 || {};
     }
   } catch (e) {
     setStatus('Не удалось прочитать теги: ' + e.message, true);
@@ -88,6 +91,9 @@ async function processAudioFile(file) {
   document.getElementById("bpm").value = readTagValue(v2, 'TBPM');
   document.getElementById("year").value = readTagValue(v2, 'TDRC', listInfo.year) || readTagValue(v2, 'TYER');
   document.getElementById("genre").value = readTagValue(v2, 'TCON', listInfo.genre);
+  
+  lufsInput.value = readCustomTxxxValue(v2, 'LUFS');
+  document.getElementById("comment").value = readCommentValue(v2);
 
   existingCoverData = null;
   coverBuffer = null;
@@ -114,6 +120,24 @@ async function processAudioFile(file) {
   form.style.display = "block";
   dropZone.querySelector('label').innerHTML = `Файл загружен: <strong>${originalFileName}</strong><br>(перетащите другой, чтобы заменить)`;
 }
+
+calcLufsBtn.addEventListener("click", async () => {
+  if (!rawAudioBuffer) return;
+  calcLufsBtn.disabled = true;
+  calcLufsBtn.textContent = "...";
+  setStatus('Идет анализ громкости...', false);
+
+  try {
+    const result = await calculateLUFS(rawAudioBuffer);
+    lufsInput.value = result;
+    setStatus('Анализ громкости завершен', false);
+  } catch (e) {
+    setStatus('Ошибка анализа LUFS: ' + e.message, true);
+  } finally {
+    calcLufsBtn.disabled = false;
+    calcLufsBtn.textContent = "Замер";
+  }
+});
 
 document.getElementById("coverFile").addEventListener("change", async e => {
   const file = e.target.files[0];
@@ -147,6 +171,8 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     bpm: document.getElementById("bpm").value.trim(),
     year: document.getElementById("year").value.trim(),
     genre: document.getElementById("genre").value.trim(),
+    lufs: lufsInput.value.trim(),
+    comment: document.getElementById("comment").value.trim(),
   };
 
   try {
@@ -179,6 +205,13 @@ document.getElementById("saveBtn").addEventListener("click", () => {
       if (values.composer) writer.tags.v2.TCOM = values.composer;
       if (values.key) writer.tags.v2.TKEY = values.key;
       if (values.bpm) writer.tags.v2.TBPM = values.bpm;
+
+      if (values.lufs) {
+        writer.tags.v2.TXXX = [{ description: 'LUFS', text: values.lufs }];
+      }
+      if (values.comment) {
+        writer.tags.v2.COMM = [{ language: 'eng', descriptor: '', text: values.comment }];
+      }
 
       if (finalCoverBytes) {
         writer.tags.v2.APIC = [{
